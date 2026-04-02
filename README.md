@@ -13,13 +13,13 @@ This Custom HAL acts as a controller that delegates the actual biometric process
 ---
 ### The System Properties Bridge
 To communicate between the native Custom HAL daemon and the custom system service, the system utilizes Android System Properties as a seamless bridge:
-1. **Command Execution:** When the Android OS requests a biometric operation (like unlocking the phone or adding a face), the AIDL `ISession` implementation sets `debug.face.command` to a specific state:
+1. **Command Execution:** When the Android OS requests a biometric operation (like unlocking the phone or adding a face), the AIDL `ISession` implementation sets `debug.face-hal.command` to a specific state:
    - `1` : Start Enrollment
    - `2` : Start Authentication
    - `3` : Remove Enrollments
    - `4` : Abort / Cancel Operation
-2. **Polling for Results:** The HAL backend simultaneously sets `debug.face.result` to `0` and begins polling it. 
-3. **Java Processing:** The service listens for these property changes, opens the camera, runs the FacePP algorithms, and eventually writes the outcome back to `debug.face.result` (`1` for success, `-1` for failure).
+2. **Polling for Results:** The HAL backend simultaneously sets `debug.face-hal.result` to `0` and begins polling it. 
+3. **Java Processing:** The service listens for these property changes, opens the camera, runs the FacePP algorithms, and eventually writes the outcome back to `debug.face-hal.result` (`1` for success, `-1` for failure).
 4. **Binder Callbacks:** Once the HAL reads the result, it fires the appropriate Binder callbacks (`onAuthenticationSucceeded`, `onEnrollmentProgress`, etc.) back to the Android OS.
 
 ---
