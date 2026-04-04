@@ -1,32 +1,44 @@
 package ax.nd.faceunlock.camera.callables;
 
+import android.os.Handler;
+import android.util.Log;
+
+import ax.nd.faceunlock.camera.Camera2Utils;
 import ax.nd.faceunlock.camera.CameraRepository;
 import ax.nd.faceunlock.camera.listeners.CameraListener;
-import android.hardware.Camera;
 
 public class CloseCameraCallable extends CameraCallable {
+    private static final String TAG = "CloseCameraCallable";
+    private final Handler mCamera2Handler;
 
-    public CloseCameraCallable(CameraListener cameraListener) {
+    public CloseCameraCallable(CameraListener cameraListener, Handler camera2Handler) {
         super(cameraListener);
+        mCamera2Handler = camera2Handler;
     }
 
     @Override
     public void run() {
-        CameraRepository.CameraData cameraData = getCameraData();
-        if (cameraData.mCamera != null) {
+        CameraRepository.CameraData data = getCameraData();
+
+        data.mPreviewCallback = null;
+
+        Camera2Utils.closePreviousSession(data);
+
+        if (data.mCameraDevice != null) {
             try {
-                cameraData.mCamera.setPreviewCallback(null);
-                cameraData.mCamera.stopPreview();
-                cameraData.mCamera.release();
+                data.mCameraDevice.close();
             } catch (Exception e) {
-                e.printStackTrace();
+                Log.w(TAG, "Error closing CameraDevice", e);
             } finally {
-                cameraData.mCamera = null;
+                data.mCameraDevice = null;
             }
         }
-        
-        if (getCameraListener() != null) {
-            CameraCallable.runOnUiThread(() -> getCameraListener().onComplete(null));
+
+        data.mCameraIdStr = null;
+
+        final CameraListener listener = getCameraListener();
+        if (listener != null) {
+            CameraCallable.runOnUiThread(() -> listener.onComplete(null));
         }
     }
 }

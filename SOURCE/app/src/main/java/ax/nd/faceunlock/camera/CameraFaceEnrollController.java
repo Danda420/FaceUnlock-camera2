@@ -3,10 +3,10 @@ package ax.nd.faceunlock.camera;
 import static ax.nd.faceunlock.FaceUnlockService.DEBUG;
 
 import android.content.Context;
-import android.hardware.Camera;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Looper;
+import android.os.Process;
 import android.util.Log;
 import android.view.Surface;
 
@@ -16,20 +16,18 @@ import ax.nd.faceunlock.camera.listeners.ErrorCallbackListener;
 public class CameraFaceEnrollController {
     private static final String TAG = "CameraFaceEnrollController";
     private static CameraFaceEnrollController sInstance;
+
     private Context mContext;
     private Handler mHandler;
     private HandlerThread mEnrollHandlerThread;
-    private Handler mEnrollHandler;
+    private volatile Handler mEnrollHandler;
     private volatile CameraCallback mCallback;
     private volatile boolean mIsEnrolling = false;
-
-    private int mSrcWidth = 0;
+    private int mSrcWidth  = 0;
     private int mSrcHeight = 0;
-
-    private int mTargetWidth = 640;
+    private int mTargetWidth  = 640;
     private int mTargetHeight = 480;
     private boolean mUseDownscale = false;
-
     private byte[] mProcessedBuffer;
 
     public interface CameraCallback {
@@ -38,7 +36,7 @@ public class CameraFaceEnrollController {
         void onFaceDetected();
         void onTimeout();
         void onCameraError();
-        void setDetectArea(Camera.Size size);
+        void setDetectArea(int width, int height);
     }
 
     public static CameraFaceEnrollController getInstance(Context context) {
@@ -56,19 +54,18 @@ public class CameraFaceEnrollController {
     }
 
     public void start(CameraCallback callback, int cameraId, Surface previewSurface) {
-        if (DEBUG) Log.d(TAG, "start() called with cameraId: " + cameraId);
+        if (DEBUG) Log.d(TAG, "start() cameraId=" + cameraId);
         if (mIsEnrolling) stop(null);
         mIsEnrolling = true;
         mCallback = callback;
-
-        mSrcWidth = 0;
+        mSrcWidth  = 0;
         mSrcHeight = 0;
 
-        mEnrollHandlerThread = new HandlerThread("face_enroll_thread");
+        mEnrollHandlerThread = new HandlerThread("face_enroll_thread", Process.THREAD_PRIORITY_VIDEO);
         mEnrollHandlerThread.start();
         mEnrollHandler = new Handler(mEnrollHandlerThread.getLooper());
 
-        CameraService.openCamera(cameraId, new ErrorCallbackListener() {
+        CameraService.openCamera(mContext, cameraId, new ErrorCallbackListener() {
             @Override
             public void onEventCallback(int i, Object value) {
                 Log.e(TAG, "Camera open error: " + i);
@@ -77,6 +74,11 @@ public class CameraFaceEnrollController {
         }, new CameraListener() {
             @Override
             public void onComplete(Object value) {
+                CameraRepository.CameraData data = CameraRepository.getInstance().getCameraData();
+                mSrcWidth  = data.mWidth;
+                mSrcHeight = data.mHeight;
+                computeTargetSize();
+                if (mCallback != null) mCallback.setDetectArea(mSrcWidth, mSrcHeight);
                 startConfiguredPreview(previewSurface);
             }
             @Override
@@ -90,10 +92,17 @@ public class CameraFaceEnrollController {
         CameraService.configureAndStartPreview(surface, new CameraListener() {
             @Override
             public void onComplete(Object value) {
-                if (DEBUG) Log.d(TAG, "Preview Started. Attaching Callback...");
+                CameraRepository.CameraData data = CameraRepository.getInstance().getCameraData();
+                if (data.mWidth != mSrcWidth || data.mHeight != mSrcHeight) {
+                    mSrcWidth  = data.mWidth;
+                    mSrcHeight = data.mHeight;
+                    computeTargetSize();
+                }
+                if (DEBUG) Log.d(TAG, "Enrollment preview started "
+                        + mSrcWidth + "x" + mSrcHeight
+                        + " → target " + mTargetWidth + "x" + mTargetHeight);
                 attachPreviewCallback();
             }
-
             @Override
             public void onError(Exception e) {
                 if (mCallback != null) mCallback.onCameraError();
@@ -109,26 +118,22 @@ public class CameraFaceEnrollController {
             if (obj instanceof byte[]) {
                 final byte[] srcData = (byte[]) obj;
 
-                if (mSrcWidth == 0) {
-                    detectSourceResolution(srcData.length);
-                }
-
+                if (mSrcWidth == 0) detectSourceResolutionFromBuffer(srcData.length);
                 if (mSrcWidth == 0) return;
 
                 if (mEnrollHandler != null) {
                     mEnrollHandler.post(() -> {
                         try {
-                            byte[] destBuffer = mProcessedBuffer;
-
-                            if (callback == null || mSrcWidth == 0 || destBuffer == null) return;
+                            byte[] dest = mProcessedBuffer;
+                            if (callback == null || mSrcWidth == 0 || dest == null) return;
 
                             if (mUseDownscale) {
-                                downscaleNV21(srcData, mSrcWidth, mSrcHeight, destBuffer, mTargetWidth, mTargetHeight);
+                                downscaleNV21(srcData, mSrcWidth, mSrcHeight, dest, mTargetWidth, mTargetHeight);
                             } else {
-                                cropNV21(srcData, mSrcWidth, mSrcHeight, destBuffer, mTargetWidth, mTargetHeight);
+                                cropNV21(srcData, mSrcWidth, mSrcHeight, dest, mTargetWidth, mTargetHeight);
                             }
 
-                            int res = callback.handleSaveFeature(destBuffer, mTargetWidth, mTargetHeight, 90);
+                            int res = callback.handleSaveFeature(dest, mTargetWidth, mTargetHeight, 90);
                             callback.handleSaveFeatureResult(res);
 
                         } catch (Exception e) {
@@ -140,82 +145,101 @@ public class CameraFaceEnrollController {
         }, false, null);
     }
 
-    private void detectSourceResolution(int dataLength) {
-        int pixels = (int)(dataLength / 1.5);
-        int sqrt = (int) Math.sqrt(pixels);
+    public void stop(CameraCallback callback) {
+        if (DEBUG) Log.d(TAG, "Stopping Enroll Camera");
+        mIsEnrolling = false;
+        mCallback = null;
+        mProcessedBuffer = null;
 
-        if (sqrt * sqrt == pixels) {
-            mSrcWidth = sqrt;
-            mSrcHeight = sqrt;
+        mEnrollHandler = null;
 
-            if (mSrcWidth >= 800) {
-                mUseDownscale = true;
-                mTargetWidth = mSrcWidth / 2;
-                mTargetHeight = mSrcHeight / 2;
-                if (DEBUG) Log.i(TAG, "High-Res Square (" + mSrcWidth + "x" + mSrcHeight + ") -> Downscaling to " + mTargetWidth + "x" + mTargetHeight);
-            } else {
-                mUseDownscale = false;
-                mTargetWidth = 640;
-                mTargetHeight = 480;
-                if (DEBUG) Log.i(TAG, "Standard Square (" + mSrcWidth + "x" + mSrcHeight + ") -> Cropping to " + mTargetWidth + "x" + mTargetHeight);
+        CameraService.closeCamera(new CameraListener() {
+            @Override
+            public void onComplete(Object value) {
+                if (mEnrollHandlerThread != null) {
+                    mEnrollHandlerThread.quitSafely();
+                    mEnrollHandlerThread = null;
+                }
             }
+
+            @Override
+            public void onError(Exception e) {
+                if (mEnrollHandlerThread != null) {
+                    mEnrollHandlerThread.quitSafely();
+                    mEnrollHandlerThread = null;
+                }
+            }
+        });
+    }
+
+    private void computeTargetSize() {
+        if (mSrcWidth <= 0 || mSrcHeight <= 0) return;
+
+        boolean isSquare = (mSrcWidth == mSrcHeight);
+
+        if (isSquare && mSrcWidth >= 800) {
+            mUseDownscale = true;
+            mTargetWidth  = mSrcWidth  / 2;
+            mTargetHeight = mSrcHeight / 2;
+            if (DEBUG) Log.i(TAG, "High-Res Square → downscale to " + mTargetWidth + "x" + mTargetHeight);
+        } else if (isSquare) {
+            mUseDownscale = false;
+            mTargetWidth  = 640;
+            mTargetHeight = 480;
+            if (DEBUG) Log.i(TAG, "Standard Square → crop to " + mTargetWidth + "x" + mTargetHeight);
+        } else {
+            mUseDownscale = false;
+            mTargetWidth  = 640;
+            mTargetHeight = 480;
         }
-        else if (pixels == 307200) { mSrcWidth = 640; mSrcHeight = 480; mUseDownscale = false; } // VGA
-        else if (pixels == 921600) { mSrcWidth = 1280; mSrcHeight = 720; mUseDownscale = false; } // 720p
-        else if (pixels == 2073600) { mSrcWidth = 1920; mSrcHeight = 1080; mUseDownscale = false; } // 1080p
+        mProcessedBuffer = new byte[mTargetWidth * mTargetHeight * 3 / 2];
+    }
+
+    private void detectSourceResolutionFromBuffer(int dataLength) {
+        int pixels = (int) (dataLength / 1.5);
+        int sqrt = (int) Math.sqrt(pixels);
+        if (sqrt * sqrt == pixels) {
+            mSrcWidth = mSrcHeight = sqrt;
+        } else if (pixels == 307200)  { mSrcWidth = 640;  mSrcHeight = 480;  }
+        else if (pixels == 921600)    { mSrcWidth = 1280; mSrcHeight = 720;  }
+        else if (pixels == 2073600)   { mSrcWidth = 1920; mSrcHeight = 1080; }
         else {
             Log.e(TAG, "Unknown buffer size: " + dataLength);
             return;
         }
-
-        mProcessedBuffer = new byte[mTargetWidth * mTargetHeight * 3 / 2];
+        computeTargetSize();
     }
 
-    private void downscaleNV21(byte[] src, int srcWidth, int srcHeight, byte[] dest, int dstWidth, int dstHeight) {
-        for (int y = 0; y < dstHeight; y++) {
-            for (int x = 0; x < dstWidth; x++) {
-                dest[y * dstWidth + x] = src[(y * 2) * srcWidth + (x * 2)];
-            }
-        }
+    private void downscaleNV21(byte[] src, int srcW, int srcH,
+                               byte[] dst, int dstW, int dstH) {
+        for (int y = 0; y < dstH; y++)
+            for (int x = 0; x < dstW; x++)
+                dst[y * dstW + x] = src[(y * 2) * srcW + (x * 2)];
 
-        int uvSrcStart = srcWidth * srcHeight;
-        int uvDstStart = dstWidth * dstHeight;
-        for (int y = 0; y < dstHeight / 2; y++) {
-            for (int x = 0; x < dstWidth; x += 2) {
-                int srcIndex = uvSrcStart + (y * 2) * srcWidth + x * 2;
-                int dstIndex = uvDstStart + y * dstWidth + x;
-
-                dest[dstIndex] = src[srcIndex];     // V
-                dest[dstIndex + 1] = src[srcIndex + 1]; // U
+        int uvSrc = srcW * srcH, uvDst = dstW * dstH;
+        for (int y = 0; y < dstH / 2; y++) {
+            for (int x = 0; x < dstW; x += 2) {
+                int si = uvSrc + (y * 2) * srcW + x * 2;
+                int di = uvDst + y * dstW + x;
+                dst[di]     = src[si];
+                dst[di + 1] = src[si + 1];
             }
         }
     }
 
-    private void cropNV21(byte[] src, int srcWidth, int srcHeight, byte[] dest, int dstWidth, int dstHeight) {
-        if (src.length < srcWidth * srcHeight * 3 / 2) return;
-        int xOffset = (srcWidth - dstWidth) / 2;
-        int yOffset = (srcHeight - dstHeight) / 2;
-        if (xOffset % 2 != 0) xOffset--;
-        if (yOffset % 2 != 0) yOffset--;
+    private void cropNV21(byte[] src, int srcW, int srcH,
+                          byte[] dst, int dstW, int dstH) {
+        if (src.length < srcW * srcH * 3 / 2) return;
+        int xOff = (srcW - dstW) / 2, yOff = (srcH - dstH) / 2;
+        if (xOff % 2 != 0) xOff--;
+        if (yOff % 2 != 0) yOff--;
 
-        for (int i = 0; i < dstHeight; i++) {
-            System.arraycopy(src, (yOffset + i) * srcWidth + xOffset, dest, i * dstWidth, dstWidth);
-        }
-        int uvSrcStart = srcWidth * srcHeight;
-        int uvDstStart = dstWidth * dstHeight;
-        for (int i = 0; i < dstHeight / 2; i++) {
-            System.arraycopy(src, uvSrcStart + (yOffset / 2 + i) * srcWidth + xOffset, dest, uvDstStart + i * dstWidth, dstWidth);
-        }
-    }
+        for (int i = 0; i < dstH; i++)
+            System.arraycopy(src, (yOff + i) * srcW + xOff, dst, i * dstW, dstW);
 
-    public void stop(CameraCallback callback) {
-        mIsEnrolling = false;
-        mCallback = null;
-        CameraService.closeCamera(null);
-        if (mEnrollHandlerThread != null) {
-            mEnrollHandlerThread.quitSafely();
-            mEnrollHandlerThread = null;
-        }
-        mProcessedBuffer = null;
+        int uvSrc = srcW * srcH, uvDst = dstW * dstH;
+        for (int i = 0; i < dstH / 2; i++)
+            System.arraycopy(src, uvSrc + (yOff / 2 + i) * srcW + xOff,
+                    dst, uvDst + i * dstW, dstW);
     }
 }

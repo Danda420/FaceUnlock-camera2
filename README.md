@@ -1,27 +1,21 @@
-**A custom Face Unlock implementation and integration toolkit for Android, bridging low-level hardware interfaces with a custom system service via a custom HAL.**
+**A Custom Face Unlock implementation for Android OEM ROMs**
 
 Previous implementations were strictly limited to specific OEM ROMs because they relied on extensive smali hooking, requiring developers to decompile `services.jar` and completely remake complex methods inside files like `FaceService.smali`, `FaceProvider.smali`, and `TestHal.smali`. 
-This revised project overhauls that legacy approach by abstracting the heavy lifting into an independent custom system service and a native Custom HAL daemon. By decoupling the architecture, framework patching is reduced to basic service-start hook and a hook for showing face enroll preview (which is completely optional), making the installation vastly simpler and transforming the project into a universal solution capable of bringing Face Unlock to a wide variety of OEM ROMs.
+This revised project overhauls that legacy approach by abstracting the heavy lifting into an independent custom system service and a native Custom HAL daemon. By decoupling the architecture, framework patching is reduced to basic service-start hook and a hook for showing face enroll preview (which is completely optional), making the patching vastly simpler and opens the possibility for other OEM ROMs faceunlock to be fixed.
 
 ---
 
 ## How It Works:
 The core architecture operates by acting as a translation layer between Android's native biometrics framework and a custom background service written in Java. It uses a Custom HAL that registers itself as the official Face HAL (`android.hardware.biometrics.face.IFace/default`). 
 
-This Custom HAL acts as a controller that delegates the actual biometric processing (via Megvii/FacePP) to the `ax.nd.faceunlock` service. 
+This Custom HAL acts as a controller that delegates the actual biometric processing (via Megvii/FacePP) to the `ax.nd.faceunlock` service.
 
----
-### The System Properties Bridge
-To communicate between the native Custom HAL daemon and the custom system service, the system utilizes Android System Properties as a seamless bridge:
-1. **Command Execution:** When the Android OS requests a biometric operation (like unlocking the phone or adding a face), the AIDL `ISession` implementation sets `debug.face-hal.command` to a specific state:
-   - `1` : Start Enrollment
-   - `2` : Start Authentication
-   - `3` : Remove Enrollments
-   - `4` : Abort / Cancel Operation
-2. **Polling for Results:** The HAL backend simultaneously sets `debug.face-hal.result` to `0` and begins polling it. 
-3. **Java Processing:** The service listens for these property changes, opens the camera, runs the FacePP algorithms, and eventually writes the outcome back to `debug.face-hal.result` (`1` for success, `-1` for failure).
-4. **Binder Callbacks:** Once the HAL reads the result, it fires the appropriate Binder callbacks (`onAuthenticationSucceeded`, `onEnrollmentProgress`, etc.) back to the Android OS.
+### The Local Socket Bridge & Camera2 Implementation
+To communicate between the native Custom HAL daemon and the custom Java system service, the architecture utilizes an efficient Local Filesystem Socket (`/dev/socket/vendor_face_hal`) rather than relying on legacy property polling. This dramatically reduces latency and CPU overhead.
 
+1. **Command Execution:** When the Android OS requests a biometric operation (like unlocking the phone or adding a face), the native HAL daemon writes a direct command string (`ENROLL`, `AUTH`, `REMOVE`, or `CANCEL`) to the local socket.
+3. **Cancellation & Thread Safety:** If the OS aborts a scan, the HAL instantly transmits a `CANCEL` string. The service handles this via a thread-safe volatile interrupt, aborting the camera feed and biometric matching mid-process without hanging the system.
+4. **Socket Responses & Binder Callbacks:** Once an operation concludes, the Java service writes the outcome back to the socket (`1` for success, `-1` for failure). The HAL reads this result and immediately fires the appropriate Binder callbacks (`onAuthenticationSucceeded`, `onEnrollmentProgress`, etc.) back to the Android OS.
 ---
 ## Project Structure
 * **`SOURCE/`**: Contains the main Android service (`ax.nd.faceunlock`) source code, including the camera controllers, listeners, and the Megvii FacePP vendor implementation.
@@ -90,6 +84,8 @@ Locate `FaceProvider` class in `services.jar` and find `scheduleEnroll` method A
     move-result-wide v9
     # rest of the method
 ```
+### 3. classes.dex
+Get the file from AUTOPATCH/faceunlock/classes.dex, rename it to classes${number}.dex. for example there's 4 `classes.dex` in your `services.jar` (maxed at `classes4.dex`) then you need to rename that dex into `classes5.dex` and add it into your `services.jar` along with those 4 classes.dex.
 
 ---
 ## Credits and Contributions

@@ -1,6 +1,6 @@
 # ROM Integration Guide
 
-This directory contains the necessary vendor configurations, HAL, shared libraries, and initialization scripts to bake OPlusFace directly into an Android ROM.
+This directory contains the necessary vendor configurations, HAL, shared libraries, and initialization scripts to bake this implementation directly into an Android ROM.
 
 ## Guide: Adding Files to Your Build
 
@@ -20,9 +20,10 @@ To integrate these files into your ROM, you need to copy the contents of the `sy
    If you're using this in oplus ROMs (OxygenOS,ColorOS,RealmeUI) add this to any .cil selinux file (preferrably vendor_sepolicy.cil):
    ```plaintext
    (allow hal_allocator_default system_server (binder (call)))
-   (allow hal_allocator_default debug_prop (property_service (set)))
    (allow hal_allocator_default face_vendor_data_file (dir (search write getattr open create add_name remove_name)))
    (allow hal_allocator_default face_vendor_data_file (file (getattr open read write create unlink)))
+   (allow system_server hal_allocator_default (unix_stream_socket (connectto)))
+
    ```
    You might need to address additional denials. And you can do it by:
    ```bash

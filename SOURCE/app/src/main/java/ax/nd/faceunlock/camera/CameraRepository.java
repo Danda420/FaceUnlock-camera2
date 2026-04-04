@@ -1,6 +1,13 @@
 package ax.nd.faceunlock.camera;
 
-import android.hardware.Camera;
+import android.content.Context;
+import android.hardware.camera2.CameraDevice;
+import android.hardware.camera2.CameraCaptureSession;
+import android.hardware.camera2.CaptureRequest;
+import android.media.ImageReader;
+import android.os.Handler;
+
+import ax.nd.faceunlock.camera.listeners.ByteBufferCallbackListener;
 
 public class CameraRepository {
     private static CameraRepository sInstance;
@@ -18,9 +25,16 @@ public class CameraRepository {
     }
 
     public static class CameraData {
-        public Camera mCamera;
-        public int mCameraId;
-        public Camera.CameraInfo mCameraInfo;
-        public Camera.Parameters mParameters;
+        public Context mContext;
+        public CameraDevice mCameraDevice;
+        public String mCameraIdStr;
+        public CameraCaptureSession mCaptureSession;
+        public CaptureRequest.Builder mPreviewRequestBuilder;
+        public ImageReader mImageReader;
+        public int mWidth = 640;
+        public int mHeight = 480;
+        public int mSensorOrientation = 90;
+        public volatile ByteBufferCallbackListener mPreviewCallback;
+        public Handler mCamera2Handler;
     }
 }

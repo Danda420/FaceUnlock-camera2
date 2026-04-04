@@ -1,9 +1,10 @@
 package ax.nd.faceunlock.camera.callables;
 
-import android.hardware.Camera;
 import ax.nd.faceunlock.camera.listeners.CameraListener;
 
 public class SetDisplayOrientationCallback extends CameraCallable {
+
+    @SuppressWarnings("unused")
     private final int mOrientation;
 
     public SetDisplayOrientationCallback(int orientation, CameraListener cameraListener) {
@@ -13,18 +14,8 @@ public class SetDisplayOrientationCallback extends CameraCallable {
 
     @Override
     public void run() {
-        try {
-            Camera camera = getCameraData().mCamera;
-            if (camera != null) {
-                camera.setDisplayOrientation(mOrientation);
-                if (getCameraListener() != null) {
-                    getCameraListener().onComplete(null);
-                }
-            }
-        } catch (Exception e) {
-            if (getCameraListener() != null) {
-                getCameraListener().onError(e);
-            }
+        if (getCameraListener() != null) {
+            getCameraListener().onComplete(null);
         }
     }
 }

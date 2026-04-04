@@ -1,6 +1,8 @@
 package ax.nd.faceunlock.camera.callables;
 
-import android.hardware.Camera;
+import android.util.Size;
+
+import ax.nd.faceunlock.camera.CameraRepository;
 import ax.nd.faceunlock.camera.listeners.CameraListener;
 import ax.nd.faceunlock.camera.listeners.ReadParametersListener;
 
@@ -14,21 +16,14 @@ public class ReadParamsCallable extends CameraCallable {
 
     @Override
     public void run() {
-        try {
-            Camera camera = getCameraData().mCamera;
-            if (camera != null) {
-                getCameraData().mParameters = camera.getParameters();
-                if (mReadListener != null) {
-                    mReadListener.onEventCallback(0, getCameraData().mParameters);
-                }
-                if (getCameraListener() != null) {
-                    getCameraListener().onComplete(null);
-                }
-            }
-        } catch (Exception e) {
-            if (getCameraListener() != null) {
-                getCameraListener().onError(e);
-            }
+        CameraRepository.CameraData data = getCameraData();
+        Size size = new Size(data.mWidth, data.mHeight);
+
+        if (mReadListener != null) {
+            mReadListener.onEventCallback(0, size);
+        }
+        if (getCameraListener() != null) {
+            getCameraListener().onComplete(null);
         }
     }
 }
