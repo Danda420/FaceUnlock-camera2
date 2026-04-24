@@ -8,7 +8,7 @@ import android.os.Looper;
 import android.util.Log;
 import ax.nd.faceunlock.backend.CustomUnlockEncryptor;
 import ax.nd.faceunlock.backend.FaceUnlockVendorImpl;
-import ax.nd.faceunlock.util.Util; 
+import ax.nd.faceunlock.util.Util;
 import java.io.File;
 
 public class FacePPImpl {
@@ -19,10 +19,10 @@ public class FacePPImpl {
 
     private Context mContext;
     private boolean mIsInit = false;
-    private int mFaceCount = 0; 
+    private int mFaceCount = 0;
     private Handler mHandler;
 
-    public FacePPImpl(Context context) { 
+    public FacePPImpl(Context context) {
         mContext = context;
         mHandler = new Handler(Looper.getMainLooper());
     }
@@ -34,17 +34,17 @@ public class FacePPImpl {
 
             File dir = new File(DATA_PATH);
             if (!dir.exists()) dir.mkdirs();
-            
+
             FaceUnlockVendorImpl.getInstance().initHandle(dir.getAbsolutePath(), new CustomUnlockEncryptor());
             long res = FaceUnlockVendorImpl.getInstance().initAllWithPath(PANORAMA_PATH, "", MODEL_PATH);
-            
+
             if (res == 0) {
                 if (DEBUG) Log.i(TAG, "FacePPImpl: Initialized successfully");
-                restoreFeature(); 
+                restoreFeature();
                 mIsInit = true;
                 mHandler.postDelayed(() -> {
                     if (DEBUG) Log.i(TAG, "FacePPImpl: Boot Latch Released");
-                }, 30000); 
+                }, 30000);
             }
         }
     }
@@ -58,7 +58,7 @@ public class FacePPImpl {
         } else {
             mFaceCount = restoredCount;
         }
-        
+
         FaceUnlockVendorImpl.getInstance().reset();
     }
 
@@ -74,20 +74,20 @@ public class FacePPImpl {
 
     public int saveFeature(byte[] img, int w, int h, int angle, boolean mirror, byte[] feature, byte[] faceData, int[] outFaceId) {
         int res = FaceUnlockVendorImpl.getInstance().saveFeature(img, w, h, angle, mirror, feature, faceData, outFaceId);
-        if (res == 0) mFaceCount = 1; 
+        if (res == 0) mFaceCount = 1;
         return res;
     }
 
     public void saveFeatureStop() { FaceUnlockVendorImpl.getInstance().reset(); }
-    
+
     public void compareStart() { if (!mIsInit) init(); FaceUnlockVendorImpl.getInstance().prepare(); }
-    
+
     public int compare(byte[] img, int w, int h, int angle, boolean mirror, boolean live, int[] scores) {
         return FaceUnlockVendorImpl.getInstance().compare(img, w, h, angle, mirror, live, scores);
     }
-    
+
     public void compareStop() { FaceUnlockVendorImpl.getInstance().reset(); }
-    
+
     public void setDetectArea(int left, int top, int right, int bottom) {
         FaceUnlockVendorImpl.getInstance().setDetectArea(left, top, right, bottom);
     }

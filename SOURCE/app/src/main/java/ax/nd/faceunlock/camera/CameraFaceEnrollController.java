@@ -98,6 +98,8 @@ public class CameraFaceEnrollController {
                     mSrcHeight = data.mHeight;
                     computeTargetSize();
                 }
+
+                if (mCallback != null) mCallback.setDetectArea(mTargetWidth, mTargetHeight);
                 if (DEBUG) Log.d(TAG, "Enrollment preview started "
                         + mSrcWidth + "x" + mSrcHeight
                         + " → target " + mTargetWidth + "x" + mTargetHeight);

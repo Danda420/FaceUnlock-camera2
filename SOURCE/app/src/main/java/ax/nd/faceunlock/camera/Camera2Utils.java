@@ -72,8 +72,7 @@ public final class Camera2Utils {
         if (sizes == null || sizes.length == 0) return null;
 
         Size[] sorted = Arrays.copyOf(sizes, sizes.length);
-        Arrays.sort(sorted, (a, b) ->
-                (b.getWidth() * b.getHeight()) - (a.getWidth() * a.getHeight()));
+        Arrays.sort(sorted, Comparator.comparingInt(s -> s.getWidth() * s.getHeight()));
 
         for (Size s : sorted) {
             if (s.getWidth() == s.getHeight() && s.getWidth() >= 480) return s;
