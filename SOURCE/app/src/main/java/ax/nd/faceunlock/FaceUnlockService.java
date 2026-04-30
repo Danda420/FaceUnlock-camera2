@@ -32,8 +32,6 @@ public class FaceUnlockService {
     private final SurfaceTexture mDummyTexture;
     private final Surface mDummySurface;
     private static volatile Surface sEnrollSurface = null;
-    // mCancelled: written by the reader thread, read by the worker thread.
-    // volatile guarantees visibility; both reader and worker run on separate threads.
     private volatile boolean mCancelled = false;
     private volatile PrintWriter mWriter;
     private final BlockingQueue<String> mCommandQueue = new LinkedBlockingQueue<>();
@@ -170,10 +168,10 @@ public class FaceUnlockService {
         CameraFaceAuthController controller = new CameraFaceAuthController(mContext,
                 new CameraFaceAuthController.ServiceCallback() {
                     @Override
-                    public int handlePreviewData(byte[] data, int w, int h) {
+                    public int handlePreviewData(byte[] data, int w, int h, int angle) {
                         if (mCancelled) { latch.countDown(); return -1; }
                         int[] scores = new int[20];
-                        int res = mFacePP.compare(data, w, h, 0, true, true, scores);
+                        int res = mFacePP.compare(data, w, h, angle, true, true, scores);
                         if (res == 0) { result[0] = 1; latch.countDown(); }
                         return res;
                     }

@@ -23,10 +23,11 @@ public class CameraFaceAuthController {
     private volatile boolean mIsAuthenticating = false;
 
     private int mWidth  = 640;
+    private int mSensorOrientation = 90;
     private int mHeight = 480;
 
     public interface ServiceCallback {
-        int handlePreviewData(byte[] data, int width, int height);
+        int handlePreviewData(byte[] data, int width, int height, int angle);
         void setDetectArea(int width, int height);
         void onTimeout(boolean b);
         void onCameraError();
@@ -59,6 +60,7 @@ public class CameraFaceAuthController {
                 CameraRepository.CameraData data = CameraRepository.getInstance().getCameraData();
                 mWidth  = data.mWidth;
                 mHeight = data.mHeight;
+                mSensorOrientation = data.mSensorOrientation;
 
                 if (DEBUG) Log.d(TAG, "Auth camera open OK (" + mWidth + "x" + mHeight + ")");
                 if (mCallback != null) mCallback.setDetectArea(mWidth, mHeight);
@@ -95,7 +97,7 @@ public class CameraFaceAuthController {
                     handler.post(() -> {
                         try {
                             if (mCallback == null || !mIsAuthenticating) return;
-                            mCallback.handlePreviewData(data, mWidth, mHeight);
+                            mCallback.handlePreviewData(data, mWidth, mHeight, mSensorOrientation);
                         } catch (Exception e) {
                             Log.e(TAG, "Auth frame processing error", e);
                         }

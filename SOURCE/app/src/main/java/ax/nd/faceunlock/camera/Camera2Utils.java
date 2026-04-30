@@ -11,42 +11,51 @@ public final class Camera2Utils {
 
     private Camera2Utils() {}
     public static byte[] imageToNV21(Image image, int width, int height) {
-        byte[] nv21 = new byte[width * height * 3 / 2];
+        try {
+            Image.Plane[] planes = image.getPlanes();
+            byte[] nv21 = new byte[width * height * 3 / 2];
 
-        Image.Plane yPlane = image.getPlanes()[0];
-        Image.Plane uPlane = image.getPlanes()[1];
-        Image.Plane vPlane = image.getPlanes()[2];
+            ByteBuffer yBuf = planes[0].getBuffer();
+            int yRowStride = planes[0].getRowStride();
+            int yPos = 0;
 
-        ByteBuffer yBuf = yPlane.getBuffer();
-        ByteBuffer uBuf = uPlane.getBuffer();
-        ByteBuffer vBuf = vPlane.getBuffer();
-
-        int yRowStride    = yPlane.getRowStride();
-        int uvRowStride   = vPlane.getRowStride();
-        int uvPixelStride = vPlane.getPixelStride();
-
-        for (int row = 0; row < height; row++) {
-            int srcPos = row * yRowStride;
-            if (srcPos + width <= yBuf.limit()) {
-                yBuf.position(srcPos);
-                yBuf.get(nv21, row * width, width);
+            byte[] yRow = new byte[yRowStride];
+            for (int row = 0; row < height; row++) {
+                yBuf.position(row * yRowStride);
+                yBuf.get(yRow, 0, Math.min(yBuf.remaining(), width));
+                System.arraycopy(yRow, 0, nv21, yPos, width);
+                yPos += width;
             }
-        }
 
-        int uvOffset = width * height;
-        for (int row = 0; row < height / 2; row++) {
-            for (int col = 0; col < width / 2; col++) {
-                int vIdx = row * uvRowStride + col * uvPixelStride;
-                int uIdx = row * uPlane.getRowStride() + col * uPlane.getPixelStride();
-                int dstIdx = uvOffset + row * width + col * 2;
-                if (vIdx < vBuf.limit() && uIdx < uBuf.limit() && dstIdx + 1 < nv21.length) {
-                    nv21[dstIdx]     = vBuf.get(vIdx);  // V
-                    nv21[dstIdx + 1] = uBuf.get(uIdx);  // U
+            ByteBuffer uBuf = planes[1].getBuffer();
+            ByteBuffer vBuf = planes[2].getBuffer();
+            int uvRowStride = planes[2].getRowStride();
+            int uvPixelStride = planes[2].getPixelStride();
+            int uPixelStride = planes[1].getPixelStride();
+
+            int uvOffset = width * height;
+            byte[] uRow = new byte[planes[1].getRowStride()];
+            byte[] vRow = new byte[uvRowStride];
+
+            for (int row = 0; row < height / 2; row++) {
+                vBuf.position(row * uvRowStride);
+                uBuf.position(row * planes[1].getRowStride());
+
+                vBuf.get(vRow, 0, Math.min(vBuf.remaining(), uvRowStride));
+                uBuf.get(uRow, 0, Math.min(uBuf.remaining(), planes[1].getRowStride()));
+
+                for (int col = 0; col < width / 2; col++) {
+                    int dstIdx = uvOffset + row * width + col * 2;
+                    nv21[dstIdx] = vRow[col * uvPixelStride];     // V
+                    nv21[dstIdx + 1] = uRow[col * uPixelStride];  // U
                 }
             }
-        }
 
-        return nv21;
+            return nv21;
+
+        } catch (IllegalStateException e) {
+            return null;
+        }
     }
 
     public static Size selectBestSize(Size[] sizes) {

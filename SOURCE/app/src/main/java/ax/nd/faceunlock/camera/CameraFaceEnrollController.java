@@ -181,9 +181,9 @@ public class CameraFaceEnrollController {
 
         if (isSquare && mSrcWidth >= 800) {
             mUseDownscale = true;
-            mTargetWidth  = mSrcWidth  / 2;
-            mTargetHeight = mSrcHeight / 2;
-            if (DEBUG) Log.i(TAG, "High-Res Square → downscale to " + mTargetWidth + "x" + mTargetHeight);
+            mTargetWidth  = 480;
+            mTargetHeight = 480;
+            if (DEBUG) Log.i(TAG, "High-Res Square → downscale to 480x480");
         } else if (isSquare) {
             mUseDownscale = false;
             mTargetWidth  = 640;
@@ -214,17 +214,25 @@ public class CameraFaceEnrollController {
 
     private void downscaleNV21(byte[] src, int srcW, int srcH,
                                byte[] dst, int dstW, int dstH) {
-        for (int y = 0; y < dstH; y++)
-            for (int x = 0; x < dstW; x++)
-                dst[y * dstW + x] = src[(y * 2) * srcW + (x * 2)];
+        float scaleX = (float) srcW / dstW;
+        float scaleY = (float) srcH / dstH;
 
-        int uvSrc = srcW * srcH, uvDst = dstW * dstH;
+        for (int y = 0; y < dstH; y++) {
+            int srcRow = (int) (y * scaleY) * srcW;
+            int dstRow = y * dstW;
+            for (int x = 0; x < dstW; x++)
+                dst[dstRow + x] = src[srcRow + (int) (x * scaleX)];
+        }
+
+        int uvSrcBase = srcW * srcH;
+        int uvDstBase = dstW * dstH;
         for (int y = 0; y < dstH / 2; y++) {
+            int srcUVRow = (int) (y * scaleY) * srcW;
+            int dstUVRow = y * dstW;
             for (int x = 0; x < dstW; x += 2) {
-                int si = uvSrc + (y * 2) * srcW + x * 2;
-                int di = uvDst + y * dstW + x;
-                dst[di]     = src[si];
-                dst[di + 1] = src[si + 1];
+                int srcUVx = ((int) (x * scaleX)) & ~1;
+                dst[uvDstBase + dstUVRow + x]     = src[uvSrcBase + srcUVRow + srcUVx];
+                dst[uvDstBase + dstUVRow + x + 1] = src[uvSrcBase + srcUVRow + srcUVx + 1];
             }
         }
     }

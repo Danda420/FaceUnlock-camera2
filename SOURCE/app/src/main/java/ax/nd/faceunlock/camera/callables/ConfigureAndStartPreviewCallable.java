@@ -78,7 +78,7 @@ public class ConfigureAndStartPreviewCallable extends CameraCallable {
             }
         }
 
-        ImageReader reader = ImageReader.newInstance(data.mWidth, data.mHeight, YUV_420_888, 3);
+        ImageReader reader = ImageReader.newInstance(data.mWidth, data.mHeight, YUV_420_888, 5);
         data.mImageReader = reader;
 
         reader.setOnImageAvailableListener(imageReader -> {
@@ -87,6 +87,7 @@ public class ConfigureAndStartPreviewCallable extends CameraCallable {
                 ByteBufferCallbackListener cb = data.mPreviewCallback;
                 if (cb == null) return;
                 byte[] nv21 = Camera2Utils.imageToNV21(image, data.mWidth, data.mHeight);
+                if (nv21 == null) return;
                 cb.onEventCallback(0, nv21);
             } catch (Exception e) {
                 Log.w(TAG, "Frame processing error", e);
